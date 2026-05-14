@@ -1,0 +1,190 @@
+/**
+ * SANITIZED PORTFOLIO ARCHITECTURE SHELL
+ *
+ * This file is not production source code. It demonstrates structure and patterns only.
+ * Real business rules, validation rules, and implementation details are removed.
+ */
+
+// Prisma schema excerpt - excerpt схемы базы данных
+// Полная схема содержит дополнительные поля, индексы и constraint'ы
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DEMO_DATABASE_URL")
+}
+
+// Branch - филиал
+model Branch {
+  id          String   @id
+  code        String   @unique
+  name        String
+  displayName String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders   Order[]
+  shifts   Shift[]
+  bookings Booking[]
+}
+
+// Client - клиент
+model Client {
+  id             String   @id
+  displayName    String
+  contactLabel   String?  @db.Text
+  contactChannel String?
+  source         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  vehicles Vehicle[]
+  orders   Order[]
+}
+
+// Vehicle - автомобиль клиента
+model Vehicle {
+  id          String   @id
+  clientId    String
+  label       String
+  brand       String
+  model       String
+  plateNumber String
+  radius      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  orders   Order[]
+  bookings Booking[]
+}
+
+// Service - услуга
+model Service {
+  id                    String   @id
+  categoryKey           String
+  name                  String
+  serviceType           String
+  pricingMode           String
+      isActive             Boolean  @default(true)
+  sortOrder             Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  orderLines OrderLine[]
+}
+
+// Order - заказ
+model Order {
+  id                   String   @id
+  branchId             String
+  number               Int
+  status               String
+  clientId             String?
+  vehicleId            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  completedAt          DateTime?
+  totalAmount          Decimal  @db.Decimal(10, 2)
+
+  // Snapshot fields - замороженные данные для неизменяемости истории
+  clientSnapshotJson    Json
+  vehicleSnapshotJson   Json?
+  executorSnapshotJson  Json?
+  paymentSnapshotJson   Json?
+  totalsSnapshotJson    Json?
+
+  branch   Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  client   Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  vehicle  Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  lines    OrderLine[]
+  payments Payment[]
+
+  @@unique([branchId, number])
+  @@index([branchId, status, createdAt])
+}
+
+// OrderLine - позиция в заказе
+model OrderLine {
+  id              String   @id
+  orderId         String
+  serviceId       String?
+  sortOrder       Int
+  quantity        Int
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  lineTotal       Decimal  @db.Decimal(10, 2)
+
+  // Snapshot fields
+  serviceNameSnapshot       String
+  serviceCategorySnapshot   String?
+  pricingSnapshotJson       Json
+  salaryRuleSnapshotJson    Json?
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// Payment - оплата
+model Payment {
+  id                 String   @id
+  orderId            String
+  paymentMethod      String
+  amount             Decimal  @db.Decimal(10, 2)
+  paidAt             DateTime @default(now())
+  paymentSnapshotJson Json
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// Shift - смена
+model Shift {
+  id                    String   @id
+  branchId              String
+  number                Int
+  status                String
+  openedAt              DateTime @default(now())
+  closedAt              DateTime?
+
+  // Snapshot fields
+  revenueTotalSnapshot  Decimal? @db.Decimal(10, 2)
+  cashTotalSnapshot     Decimal? @db.Decimal(10, 2)
+  cashlessTotalSnapshot Decimal? @db.Decimal(10, 2)
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@unique([branchId, number])
+  @@index([branchId, status, openedAt])
+}
+
+// Booking - запись на сервис
+model Booking {
+  id                String   @id
+  groupId           String
+  branchId          String
+  clientId          String?
+  anonymous         Boolean  @default(false)
+  dateKey           String
+  startTime         String
+  endTime           String
+  postId            String
+  serviceLabel      String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Snapshot fields
+  clientNameSnapshot String
+  contactSnapshot    String
+  carSnapshot        String
+
+  branch  Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, dateKey, postId])
+}
